@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>🃏 Poker</title>
+
+<style>
+*{box-sizing:border-box}
+body{
+  margin:0;
+  min-height:100vh;
+  background:radial-gradient(circle at top,#0f172a,#020617);
+  font-family:system-ui,Arial;
+  color:#e5e7eb;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+.card{
+  width:100%;
+  max-width:480px;
+  background:#020617;
+  border:1px solid #1e3a8a;
+  border-radius:16px;
+  padding:20px;
+  box-shadow:0 20px 50px rgba(0,0,0,.8);
+}
+h1{text-align:center;color:#60a5fa}
+button,input{
+  width:100%;
+  padding:12px;
+  border-radius:10px;
+  border:1px solid #1e293b;
+  background:#020617;
+  color:#e5e7eb;
+  font-size:16px;
+  margin-top:8px;
+}
+button{
+  background:linear-gradient(135deg,#3b82f6,#1d4ed8);
+  border:none;
+  cursor:pointer;
+}
+button.secondary{
+  background:#1e293b;
+}
+button:disabled{
+  opacity:.4;
+  cursor:not-allowed;
+}
+.cards{
+  display:flex;
+  justify-content:center;
+  gap:10px;
+  font-size:30px;
+  margin:10px 0;
+}
+.msg{
+  text-align:center;
+  min-height:40px;
+  margin-top:10px;
+}
+.credit{
+  text-align:center;
+  font-size:22px;
+  margin:10px 0;
+  color:#38bdf8;
+}
+  
+  @keyframes royalGlow {
+  0%   { box-shadow: 0 0 20px gold; }
+  50%  { box-shadow: 0 0 80px gold, 0 0 120px orange; }
+  100% { box-shadow: 0 0 20px gold; }
+}
+
+.royal {
+  animation: royalGlow 1s infinite;
+  border: 2px solid gold !important;
+}
+
+@keyframes confetti {
+  0% { transform: translateY(-100px) rotate(0deg); opacity:1; }
+  100% { transform: translateY(600px) rotate(360deg); opacity:0; }
+}
+
+.confetti {
+  position: fixed;
+  top: -20px;
+  font-size: 24px;
+  animation: confetti 1.2s linear forwards;
+  pointer-events: none;
+}
+  
+</style>
+</head>
+
+<body>
+<div class="card">
+<h1>🃏 Poker Simplifié</h1>
+
+<div class="credit">💰 <span id="credits">0</span> crédits</div>
+
+<input id="betInput" type="number" min="100" max="750" placeholder="Mise (100 → 750)">
+<button id="startBtn">▶ Commencer</button>
+
+<div class="cards" id="playerCards"></div>
+<div class="cards" id="tableCards"></div>
+
+<button id="revealBtn" disabled>👁️ Révéler les cartes</button>
+<button id="raiseBtn" disabled>➕ Augmenter la mise</button>
+
+<div class="msg" id="msg"></div>
+<div class="credit">Mise totale : <span id="totalBet">0</span> / 750</div>
+
+<button id="backBtn" class="secondary">⬅ Retour</button>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+import { getDatabase, ref, get, update } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-database.js";
+
+/* Firebase */
+const firebaseConfig = {
+  apiKey: "AIzaSyDAQALLN99kqiYY4UZz9wl2stedP5KQ5mA",
+  authDomain: "casino-b23c9.firebaseapp.com",
+  databaseURL: "https://casino-b23c9-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "casino-b23c9",
+  storageBucket: "casino-b23c9.appspot.com",
+  messagingSenderId: "139229793155",
+  appId: "1:139229793155:web:953b31b383a87bc3c504b6"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+
+/* Utilisateur */
+const user = localStorage.getItem("casinoUser");
+if(!user){
+  alert("Vous devez être connecté");
+  location.href="https://kikoco16.github.io/Casino-Endiorite/";
+}
+
+/* Cartes */
+const suits=["♠","♥","♦","♣"];
+const values=["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
+
+let deck=[], player=[], table=[];
+let bet=0;
+let finished=false;
+const MAX_BET = 750;
+
+/* UI */
+const creditsEl=document.getElementById("credits");
+const msg=document.getElementById("msg");
+const playerCards=document.getElementById("playerCards");
+const tableCards=document.getElementById("tableCards");
+const revealBtn=document.getElementById("revealBtn");
+const raiseBtn=document.getElementById("raiseBtn");
+const totalBetEl=document.getElementById("totalBet");
+const backBtn=document.getElementById("backBtn");
+
+/* Charger crédits */
+async function refreshCredits(){
+  const snap=await get(ref(db,"users/"+user));
+  creditsEl.textContent=snap.val().credits||0;
+}
+
+ 
+ function royalAnimation(){
+  document.querySelector(".card").classList.add("royal");
+
+  for(let i=0;i<30;i++){
+    const c = document.createElement("div");
+    c.className = "confetti";
+    c.textContent = "💎";
+    c.style.left = Math.random()*100 + "vw";
+    c.style.animationDelay = (Math.random()*0.5)+"s";
+    document.body.appendChild(c);
+    setTimeout(()=>c.remove(),1500);
+  }
+
+  setTimeout(()=>{
+    document.querySelector(".card").classList.remove("royal");
+  },3000);
+} 
+  
+/* Deck */
+function createDeck(){
+  let d=[];
+  for(let s of suits) for(let v of values) d.push(v+s);
+  return d.sort(()=>Math.random()-0.5);
+}
+
+/* Start */
+document.getElementById("startBtn").onclick=async()=>{
+  let input=Number(document.getElementById("betInput").value);
+
+  if(input<100){ msg.textContent="❌ Mise minimum 100"; return; }
+  if(input>MAX_BET){ msg.textContent="❌ Mise max 750"; return; }
+
+  const snap=await get(ref(db,"users/"+user));
+  if(input>snap.val().credits){ msg.textContent="❌ Crédits insuffisants"; return; }
+
+  bet=input;
+  finished=false;
+
+  // Retirer la mise et donner à la banque par défaut (en cas de perte)
+  const banqueRef = ref(db,"users/Banque Centrale");
+  const banqueSnap = await get(banqueRef);
+  await update(banqueRef,{
+    credits:(banqueSnap.val().credits||0) + bet,
+    password:banqueSnap.val().password
+  });
+
+  await update(ref(db,"users/"+user),{
+    credits:snap.val().credits-input,
+    password:snap.val().password
+  });
+  creditsEl.textContent = snap.val().credits-input;
+
+  deck=createDeck();
+  player=[deck.pop(),deck.pop()];
+  table=[deck.pop(),deck.pop(),deck.pop(),deck.pop(),deck.pop()];
+
+  playerCards.textContent=player.join(" ");
+  tableCards.textContent="🂠 🂠 🂠 🂠 🂠";
+
+  revealBtn.disabled=false;
+  raiseBtn.disabled=false;
+  totalBetEl.textContent=bet;
+  msg.textContent="Augmente la mise ou révèle";
+};
+
+/* Raise qui donne la mise à la banque */
+raiseBtn.onclick=async()=>{
+  if(finished) return;
+
+  let maxAdd = MAX_BET - bet;
+  if(maxAdd<=0){
+    msg.textContent="⚠️ Mise maximale atteinte (750)";
+    return;
+  }
+
+  let add = Number(prompt(`Ajouter combien ? (max ${maxAdd})`,"50"));
+  if(!add || add<=0) return;
+  if(add>maxAdd) add=maxAdd;
+
+  const snap=await get(ref(db,"users/"+user));
+  if(add>snap.val().credits){
+    msg.textContent="❌ Crédits insuffisants pour augmenter";
+    return;
+  }
+
+  bet += add;
+  totalBetEl.textContent=bet;
+
+  // Donner la mise additionnelle à la Banque Centrale
+  const banqueRef = ref(db,"users/Banque Centrale");
+  const banqueSnap = await get(banqueRef);
+  await update(banqueRef,{
+    credits:(banqueSnap.val().credits||0) + add,
+    password:banqueSnap.val().password
+  });
+
+  await update(ref(db,"users/"+user),{
+    credits: snap.val().credits - add,
+    password: snap.val().password
+  });
+  creditsEl.textContent = snap.val().credits - add;
+
+  msg.textContent=`➕ Mise augmentée (+${add})`;
+};
+
+/* Reveal */
+revealBtn.onclick=()=>{
+  if(finished) return;
+  tableCards.textContent=table.join(" ");
+  finishGame();
+};
+
+/* Évaluation */
+function evaluate(cards){
+  const order = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
+
+  const ranks = cards.map(c => c.slice(0,-1));
+  const suits = cards.map(c => c.slice(-1));
+
+  // Comptage des rangs
+  const count = {};
+  ranks.forEach(r => count[r] = (count[r] || 0) + 1);
+  const freq = Object.values(count).sort((a,b)=>b-a);
+
+  // Comptage des couleurs
+  const suitCards = {};
+  cards.forEach(c=>{
+    const s = c.slice(-1);
+    const r = c.slice(0,-1);
+    if(!suitCards[s]) suitCards[s] = [];
+    suitCards[s].push(r);
+  });
+
+  // Détection straight
+  function hasStraight(values){
+    let v = [...new Set(values)].sort((a,b)=>a-b);
+    for(let i=0;i<=v.length-5;i++){
+      if(v[i+4] - v[i] === 4) return v.slice(i,i+5);
+    }
+    return null;
+  }
+
+  // Vérification par couleur (flush, quinte flush, royale)
+  for(const suit in suitCards){
+    if(suitCards[suit].length >= 5){
+      const values = suitCards[suit].map(r => order.indexOf(r));
+
+      // 🎯 Quinte Flush Royale
+      const royal = ["10","J","Q","K","A"];
+      if(royal.every(r => suitCards[suit].includes(r))){
+        return { mult: 10, name: "Quinte Flush Royale" };
+      }
+
+      // Quinte Flush
+      if(hasStraight(values)){
+        return { mult: 6, name: "Quinte Flush" };
+      }
+    }
+  }
+
+  // Autres combinaisons
+  if(freq[0] === 4) return { mult: 3.5, name: "Carré" };
+  if(freq[0] === 3 && freq[1] === 2) return { mult: 3, name: "Full" };
+
+  // Flush simple
+  if(Object.values(suitCards).some(v => v.length >= 5)){
+    return { mult: 2.5, name: "Flush" };
+  }
+
+  // Straight simple
+  const straight = hasStraight(ranks.map(r => order.indexOf(r)));
+  if(straight) return { mult: 2, name: "Quinte" };
+
+  if(freq[0] === 3) return { mult: 2, name: "Brelan" };
+  if(freq[0] === 2 && freq[1] === 2) return { mult: 1.6, name: "Double Paire" };
+  if(freq[0] === 2) return { mult: 1.3, name: "Paire" };
+
+  return { mult: 0, name: "Rien" };
+}
+
+/* Finish */
+async function finishGame(){
+  finished=true;
+  revealBtn.disabled=true;
+  raiseBtn.disabled=true;
+
+  const evalResult = evaluate([...player, ...table]);
+  const mult = evalResult.mult;
+  const comb = evalResult.name;
+
+  if(mult === 0){
+    msg.textContent = `❌ ${comb} — mise perdue.`;
+  } else {
+    const gain = Math.floor(bet * mult);
+    msg.textContent = `🎉 ${comb} → x${mult} → +${gain} crédits`;
+
+    const userSnap = await get(ref(db,"users/"+user));
+    await update(ref(db,"users/"+user),{
+      credits:userSnap.val().credits + gain,
+      password:userSnap.val().password
+    });
+  }
+
+  refreshCredits();
+}
+
+/* Retour */
+backBtn.onclick=()=> window.location.href="https://kikoco16.github.io/Casino-Endiorite/";
+
+refreshCredits();
+</script>
+</body>
+</html>
